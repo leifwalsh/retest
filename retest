@@ -13,6 +13,14 @@ test_function_prefix = 'test_'
 visited_tests = []
 performed_tests = []
 performed_tests_count = 0
+retest_conf_file = '.retest'
+
+cxx_flags_loaded = False
+
+SHELL = "/bin/bash"
+MAKE_CMD = None
+CXXFLAGS = None
+LDFLAGS = None
 
 # Utility functions
 def source_name(file_name):
@@ -136,7 +144,28 @@ def run_tests(exec_file, conf):
             conf['tests'][test]['known_state'] = (ret == 0)
     return conf
 
+def load_compiler_flags():
+    global cxx_flags_loaded
+    old_cwd = None
+    cwd = os.path.normpath(os.path.realpath(os.getcwd()))
+    conf = None
+    while True:
+        temp_path = os.path.join(cwd, retest_conf_file)
+        if os.path.exists(temp_path):
+            conf = temp_path
+        if conf or (cwd == old_cwd) or cxx_flags_loaded:
+            break
+        old_cwd = cwd
+        cwd = os.path.normpath(os.path.realpath(os.path.join(cwd, '..')))
+    if conf and (cxx_flags_loaded != conf):
+        cxx_flags_loaded = conf
+        execfile(conf, globals())
+    elif not cxx_flags_loaded:
+        print("No configuration file found. Please run 'retest init'")
+        sys.exit(-1)
+
 def process_test_file(file):
+    # Some files
     xml_file = '%s.xml' % file
     source_file = source_name(file)
     exec_file = exec_name(file)
@@ -151,16 +180,32 @@ def process_test_file(file):
         call(['rm', '-f', source_file])
         call(['rm', '-f', exec_file])
         # Generate XML out of the file
-        ret = call(['gccxml', '-fxml=%s' % xml_file, file])
+        gccxmlargs = ['gccxml', '-fxml=%s' % xml_file]
+        if CXXFLAGS:
+            gccxmlargs.append('--gccxml-cxxflags')
+            gccxmlargs.extend(CXXFLAGS.rsplit(' '))
+        gccxmlargs.append(file)
+        ret = call(gccxmlargs)
         if not (ret == 0):
-            return
+            sys.exit(-1)
         # Load the XML
         dom = parse(xml_file)
         call(['rm', '-f', xml_file])
         # Generate executable
         conf = gen_main_file(file, dom)
         # Compile
-        call(['g++', '-o', exec_file, source_file])
+        gccargs = "g++ -o %s" % exec_file
+        gccargs += " "
+        if CXXFLAGS:
+            gccargs += CXXFLAGS
+            gccargs += " "
+        if LDFLAGS:
+            gccargs += LDFLAGS
+            gccargs += " "
+        gccargs += source_file
+        ret = call([SHELL, '-c', gccargs])
+        if not (ret == 0):
+            sys.exit(-1)
         call(['rm', '-f', source_file])
         # Compare configuration files
         conf = compare_configs(conf, conf_file)
@@ -173,8 +218,21 @@ def process_test_file(file):
     # Generate new configuration file
     gen_conf_file(file, conf)
 
+def init_testing():
+    # Load up compiler flags for the directory
+    load_compiler_flags()
+    # Make the main project first
+    if MAKE_CMD:
+        ret = call([SHELL, "-c", MAKE_CMD])
+        if not (ret == 0):
+            sys.exit(-1)
+
 def recursive_retest(dir):
+    init_testing()
     for root, dirs, files in os.walk(os.path.abspath(dir)):
+        # Load up compiler flags for the directory
+        load_compiler_flags()
+        # Go through the files
         for file in files:
             if os.path.splitext(file)[1] == '.cc' and file[0] != '.':
                 os.chdir(os.path.abspath(root))
@@ -192,25 +250,49 @@ def recursive_clean():
                 call(['rm', '-f', exec_name(file)])
                 call(['rm', '-f', conf_name(file)])
 
+def init_retest():
+    with open(retest_conf_file, 'w') as conf:
+        conf.write("# Shell to use for running the compiler\n")
+        conf.write('SHELL = "/bin/bash"\n')
+        conf.write("# A shell command to make the main project\n")
+        conf.write('MAKE_CMD = ""\n')
+        conf.write("# Arguments to pass to the compiler\n")
+        conf.write('CXXFLAGS = ""\n')
+        conf.write("# Arguments to pass to the linker\n")
+        conf.write('LDFLAGS = ""\n')
+
+def usage(argv):
+    procname = os.path.basename(argv[0])
+    print("Usage: %s [init | clean | file.cc | DIR]" % procname)
+    return sys.exit(-1)
+
 def main(argv):
     if(len(argv) > 2):
-        print("Usage: %s [clean | file.cc | dir]" % argv[0])
-        sys.exit()
+        usage(argv)
     if(len(argv) == 2):
         if(argv[1] == 'clean'):
             recursive_clean()
+            return 0
+        elif(argv[1] == 'init'):
+            init_retest()
+            return 0
         else:
             if os.path.splitext(argv[1])[1] == '.cc':
                 if(os.path.split(argv[1])[0] != ''):
                     os.chdir(os.path.split(argv[1])[0])
+                # Load up compiler flags for the directory
+                init_testing()
                 process_test_file(os.path.split(argv[1])[1])
                 print_results()
             else:
                 recursive_retest(argv[1])
-        return
-    recursive_retest(os.getcwd())
+    elif(len(argv)) == 1:
+        recursive_retest(os.getcwd())
+    else:
+        usage(argv)
     if len(filter(lambda x: x[1] != True, performed_tests)) > 0:
-        sys.exit(1)
+        return -1
+    return 0
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))
