@@ -7,8 +7,8 @@
 #include <stdlib.h>
 
 // Generic assertion
-template<typename T>
-void assert_impl(bool cond, const char* op, T x, T y, const char *file, unsigned int line) {
+template<typename T1, typename T2>
+void assert_impl(bool cond, const char* op, T1 x, T2 y, const char *file, unsigned int line) {
     using namespace std;
     if(!cond) {
         const char *real_file = file + 1;
