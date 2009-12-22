@@ -4,6 +4,7 @@
 import sys
 import os
 import os.path
+from optparse import OptionParser, make_option
 from subprocess import call
 from xml.dom.minidom import parse
 import hashlib
@@ -133,11 +134,11 @@ def print_results():
              len(visited_tests),
              len(filter(lambda x: x[1] != True, performed_tests))))
 
-def run_tests(exec_file, conf):
+def run_tests(exec_file, conf, fulltest=False):
     global visited_tests, performed_tests
     for test in conf['test_list']:
         visited_tests.append(test)
-        if conf['tests'][test]['known_state'] != True:
+        if fulltest or conf['tests'][test]['known_state'] != True:
             ret = call(['./%s' % exec_file, test[len(test_function_prefix):]])
             print_test_status(test, ret == 0)
             performed_tests.append((test, (ret == 0)))
@@ -164,7 +165,7 @@ def load_compiler_flags():
         print("No configuration file found. Please run 'retest init'")
         sys.exit(-1)
 
-def process_test_file(file):
+def process_test_file(file, fulltest):
     # Some files
     xml_file = '%s.xml' % file
     source_file = source_name(file)
@@ -214,7 +215,7 @@ def process_test_file(file):
     # Remove old config file
     call(['rm', '-f', conf_file])
     # Run the test
-    conf = run_tests(exec_file, conf)
+    conf = run_tests(exec_file, conf, fulltest)
     # Generate new configuration file
     gen_conf_file(file, conf)
 
@@ -227,23 +228,23 @@ def init_testing():
         if not (ret == 0):
             sys.exit(-1)
 
-def recursive_retest(dir):
+def recursive_retest(dir, fulltest):
     init_testing()
     for root, dirs, files in os.walk(os.path.abspath(dir)):
         # Load up compiler flags for the directory
         load_compiler_flags()
         # Go through the files
         for file in files:
-            if os.path.splitext(file)[1] == '.cc' and file[0] != '.':
+            if os.path.splitext(file)[1] in ['.c', '.cc'] and file[0] != '.':
                 os.chdir(os.path.abspath(root))
-                process_test_file(file)
+                process_test_file(file, fulltest)
     # Results!
     print_results()
 
 def recursive_clean():
     for root, dirs, files in os.walk(os.path.abspath(os.getcwd())):
         for file in files:
-            if os.path.splitext(file)[1] == '.cc' and file[0] != '.':
+            if os.path.splitext(file)[1] in ['.c', '.cc'] and file[0] != '.':
                 os.chdir(os.path.abspath(root))
                 call(['rm', '-f', '%s.xml' % file])
                 call(['rm', '-f', source_name(file)])
@@ -261,36 +262,47 @@ def init_retest():
         conf.write("# Arguments to pass to the linker\n")
         conf.write('LDFLAGS = ""\n')
 
-def usage(argv):
-    procname = os.path.basename(argv[0])
-    print("Usage: %s [init | clean | file.cc | DIR]" % procname)
-    return sys.exit(-1)
-
 def main(argv):
-    if(len(argv) > 2):
-        usage(argv)
-    if(len(argv) == 2):
-        if(argv[1] == 'clean'):
+    parser = OptionParser(
+        usage='Usage: %prog [init | clean | [files|dirs]... ]',
+        option_list=[
+            make_option('-F', '--full', action='store_true', dest='full',
+                        default=False,
+                        help='run all tests, regardless of previous successes'),
+            make_option('--no-full', action='store_false', dest='full',
+                        help='opposite of --full (default)')
+            ])
+    options, args = parser.parse_args()
+    if len(args) > 0:
+        if args[0] == 'clean':
+            if len(args) > 1:
+                parser.error('clean should be specified alone')
             recursive_clean()
             return 0
-        elif(argv[1] == 'init'):
+        if args[0] == 'init':
+            if len(args) > 1:
+                parser.error('init should be specified alone')
             init_retest()
             return 0
-        else:
-            if os.path.splitext(argv[1])[1] == '.cc':
-                if(os.path.split(argv[1])[0] != ''):
-                    os.chdir(os.path.split(argv[1])[0])
-                # Load up compiler flags for the directory
+        for arg in args:
+            if os.path.splitext(arg)[1] in ['.c', '.cc']:
+                if not os.path.exists(arg):
+                    parser.error('%s not found' % arg)
+                if os.path.split(arg)[0] != '':
+                    saved_dir = os.getcwd()
+                    os.chdir(os.path.split(arg)[0])
                 init_testing()
-                process_test_file(os.path.split(argv[1])[1])
+                process_test_file(os.path.split(arg)[1], options.full)
                 print_results()
+                if os.path.split(arg)[0] != '':
+                    os.chdir(saved_dir)
             else:
-                recursive_retest(argv[1])
-    elif(len(argv)) == 1:
-        recursive_retest(os.getcwd())
+                if not os.path.exists(arg):
+                    parser.error('%s not found' % arg)
+                recursive_retest(arg, options.full)
     else:
-        usage(argv)
-    if len(filter(lambda x: x[1] != True, performed_tests)) > 0:
+        recursive_retest(os.getcwd(), options.full)
+    if len(filter(lambda x: not x[1], performed_tests)) > 0:
         return -1
     return 0
 
