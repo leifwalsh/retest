@@ -111,13 +111,11 @@ def load_config(conf_file):
     return conf
 
 def compare_configs(new_conf, conf_file):
-    if not os.path.exists(conf_file):
-        return new_conf
-    # Read the old config file
-    old_conf = load_config(conf_file)
-    for test, data in new_conf['tests'].iteritems():
-        if old_conf['tests'][test]['hash'] == data['hash']:
-            data['known_state'] = old_conf['tests'][test]['known_state']
+    if os.path.exists(conf_file):
+        old_conf = load_config(conf_file)
+        for test, data in new_conf['tests'].iteritems():
+            if old_conf['tests'][test]['hash'] == data['hash']:
+                data['known_state'] = old_conf['tests'][test]['known_state']
     return new_conf
 
 def print_test_status(test, res, options, linelength):
