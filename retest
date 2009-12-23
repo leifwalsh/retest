@@ -32,10 +32,17 @@ def basefilename(file_name):
     return name
 
 def orig_source_name(file_name):
-    return '%s.cc' % basefilename(file_name)
+    name = '%s.c' % basefilename(file_name)
+    if os.path.exists(name):
+        return name
+    elif os.path.exists(name + 'c'):
+        return name + 'c'
+    else:
+        # oh well...
+        return name + 'c'
 
 def source_name(file_name):
-    return '.%s.cc' % basefilename(file_name)
+    return '.%s' % orig_source_name(file_name)
 
 def exec_name(file_name):
     return '.%s.exec' % basefilename(file_name)
@@ -54,13 +61,11 @@ def gen_fn_hash(source, node):
         end = begin
     m = hashlib.md5()
     with open(source, 'r') as src:
-        i = 1
-        for line in src:
-            if i > end:
+        for i, line in enumerate(src):
+            if i+1 > end:
                 break
-            if i >= begin and i <= end:
+            if i+1 >= begin and i+1 <= end:
                 m.update(line)
-            i += 1
     return m.hexdigest()
 
 # Inspect the test file source code and automatically generate a file
@@ -79,10 +84,8 @@ def gen_main_file(test_file, dom):
         config['test_list'].append(fn)
         del config['tests'][fn]['line']
     # Generate the source file
-    with open(source_name(test_file), 'w') as gen:
-        with open(test_file, 'r') as test_file:
-            for line in test_file:
-                gen.write(line)
+    call(['cp', test_file, source_name(test_file)])
+    with open(source_name(test_file), 'a') as gen:
         gen.write('\n/*** GENERATED CODE ***/\n\n')
         gen.write('#include <string.h>\n\n')
         gen.write('int main(int argc, char *argv[]) {\n')
@@ -100,7 +103,7 @@ def gen_main_file(test_file, dom):
 
 def gen_conf_file(test_file, conf):
     with open(conf_name(test_file), 'w') as gen:
-        gen.write(str(conf))
+        gen.write(repr(conf))
 
 def load_config(conf_file):
     with open(conf_file, 'r') as old_conf_file:
@@ -112,20 +115,10 @@ def compare_configs(new_conf, conf_file):
         return new_conf
     # Read the old config file
     old_conf = load_config(conf_file)
-    # Go through old config and see if anything changed
-    for test in old_conf['test_list']:
-        if not test in new_conf['tests']:
-            del old_conf['tests'][test]
-            continue
-        if old_conf['tests'][test]['hash'] != new_conf['tests'][test]['hash']:
-            old_conf['tests'][test]['known_state'] = None
-            old_conf['tests'][test]['hash'] = new_conf['tests'][test]['hash']
-    # Go through new config and see if we need to add anything
-    for test in new_conf['test_list']:
-        if not test in old_conf['tests']:
-            old_conf['tests'][test] = new_conf['tests'][test]
-    old_conf['test_list'] = new_conf['test_list']
-    return old_conf
+    for test, data in new_conf['tests'].iteritems():
+        if old_conf['tests'][test]['hash'] == data['hash']:
+            data['known_state'] = old_conf['tests'][test]['known_state']
+    return new_conf
 
 def print_test_status(test, res, options, linelength):
     global performed_tests_count
@@ -301,12 +294,12 @@ def main(argv):
             ])
     options, args = parser.parse_args()
     if len(args) > 0:
-        if args[0] == 'clean':
+        if 'clean' in args:
             if len(args) > 1:
                 parser.error('clean should be specified alone')
             recursive_clean()
             return 0
-        if args[0] == 'init':
+        if 'init' in args:
             if len(args) > 1:
                 parser.error('init should be specified alone')
             init_retest()
