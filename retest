@@ -320,9 +320,11 @@ def main(argv):
                 recursive_retest(arg, options.full)
     else:
         recursive_retest(os.getcwd(), options.full)
-    if len(list(itertools.dropwhile(lambda x: x[1], performed_tests))) > 0:
+    try:
+        itertools.dropwhile(lambda x: x[1], performed_tests).next()
         return -1
-    return 0
+    except StopIteration:
+        return 0
 
 if __name__ == '__main__':
     sys.exit(main(sys.argv))
