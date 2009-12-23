@@ -285,9 +285,14 @@ def main(argv):
             init_retest()
             return 0
         for arg in args:
-            if os.path.splitext(arg)[1] in ['.c', '.cc']:
-                if not os.path.exists(arg):
-                    parser.error('%s not found' % arg)
+            if not os.path.exists(arg):
+                parser.error('%s not found' % arg)
+            if not (os.path.isdir(arg) or os.path.isfile(arg)):
+                parser.error('%s is not a file or directory' % arg)
+        for arg in args:
+            if os.path.isfile(arg):
+                if not os.path.splitext(arg)[1] in ['.c', '.cc']:
+                    print >>sys.stderr, 'Warning: %s is not a C/C++ program!' % arg
                 if os.path.split(arg)[0] != '':
                     saved_dir = os.getcwd()
                     os.chdir(os.path.split(arg)[0])
@@ -297,8 +302,6 @@ def main(argv):
                 if os.path.split(arg)[0] != '':
                     os.chdir(saved_dir)
             else:
-                if not os.path.exists(arg):
-                    parser.error('%s not found' % arg)
                 recursive_retest(arg, options.full)
     else:
         recursive_retest(os.getcwd(), options.full)
