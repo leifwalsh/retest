@@ -25,17 +25,23 @@ CXXFLAGS = None
 LDFLAGS = None
 
 # Utility functions
+def basefilename(file_name):
+    name = os.path.splitext(file_name)[0]
+    while name[0] == '.':
+        name = name[1:]
+    return name
+
 def orig_source_name(file_name):
-    return ('%s.cc' % os.path.splitext(file_name)[0])[1:]
+    return '%s.cc' % basefilename(file_name)
 
 def source_name(file_name):
-    return '.%s.cc' % os.path.splitext(file_name)[0]
+    return '.%s.cc' % basefilename(file_name)
 
 def exec_name(file_name):
-    return '.%s.exec' % os.path.splitext(file_name)[0]
+    return '.%s.exec' % basefilename(file_name)
 
 def conf_name(file_name):
-    return '.%s.conf' % os.path.splitext(file_name)[0]
+    return '.%s.conf' % basefilename(file_name)
 
 def test_cmp(x, y):
     return x[1]['line'] - y[1]['line']
@@ -123,12 +129,12 @@ def compare_configs(new_conf, conf_file):
 
 def print_test_status(test, res, linelength):
     global performed_tests_count
-    dots = ''
-    ndots = linelength - len(test)
-    while ndots:
-        dots += '.'
-        ndots -= 1
-    print '  %s %s %s' % (test, dots, res)
+    spaces = ''
+    nspaces = linelength - len(test)
+    while nspaces:
+        spaces += ' '
+        nspaces -= 1
+    print '%s%s : %s' % (spaces, test, res)
     if res != 'skip':
         performed_tests_count += 1
 
@@ -138,13 +144,13 @@ def print_results():
              len(visited_tests),
              len(filter(lambda x: not x[1], performed_tests))))
 
-def run_tests(exec_file, conf, fulltest=False):
+def run_tests(exec_file, conf, options):
     global visited_tests, performed_tests
     print 'Running tests in %s...' % orig_source_name(exec_file)
-    linelength = max(len(test) for test in conf['test_list']) + 3
+    linelength = max(len(test) for test in conf['test_list']) + 2
     for test in conf['test_list']:
         visited_tests.append(test)
-        if fulltest or conf['tests'][test]['known_state'] != True:
+        if options.full or conf['tests'][test]['known_state'] != True:
             proc = Popen(['./%s' % exec_file, test[len(test_function_prefix):]],
                          stdout=PIPE, stderr=PIPE)
             out, err = proc.communicate()
@@ -158,6 +164,11 @@ def run_tests(exec_file, conf, fulltest=False):
             conf['tests'][test]['known_state'] = (ret == 0)
         else:
             print_test_status(test, 'skip', linelength)
+    try:
+        itertools.dropwhile(lambda p: p[1], performed_tests).next()
+        print 'Test failure.  Saving "%s" for inspection.' % source_name(exec_file)
+    except StopIteration:
+        call(['rm', '-f', source_name(exec_file)])
     return conf
 
 def load_compiler_flags():
@@ -180,7 +191,7 @@ def load_compiler_flags():
         print("No configuration file found. Please run 'retest init'")
         sys.exit(-1)
 
-def process_test_file(file, fulltest):
+def process_test_file(file, options):
     # Some files
     xml_file = '%s.xml' % file
     source_file = source_name(file)
@@ -196,7 +207,7 @@ def process_test_file(file, fulltest):
         call(['rm', '-f', source_file])
         call(['rm', '-f', exec_file])
         # Generate XML out of the file
-        gccxmlargs = ['gccxml', '-lc', '-fxml=%s' % xml_file]
+        gccxmlargs = ['gccxml', '-fxml=%s' % xml_file]
         if CXXFLAGS:
             gccxmlargs.append('--gccxml-cxxflags')
             gccxmlargs.extend(CXXFLAGS.rsplit(' '))
@@ -222,7 +233,7 @@ def process_test_file(file, fulltest):
         ret = call([SHELL, '-c', gccargs])
         if not (ret == 0):
             sys.exit(-1)
-        call(['rm', '-f', source_file])
+
         # Compare configuration files
         conf = compare_configs(conf, conf_file)
     else:
@@ -230,7 +241,7 @@ def process_test_file(file, fulltest):
     # Remove old config file
     call(['rm', '-f', conf_file])
     # Run the test
-    conf = run_tests(exec_file, conf, fulltest)
+    conf = run_tests(exec_file, conf, options)
     # Generate new configuration file
     gen_conf_file(file, conf)
 
@@ -243,7 +254,7 @@ def init_testing():
         if not (ret == 0):
             sys.exit(-1)
 
-def recursive_retest(dir, fulltest):
+def recursive_retest(dir, options):
     init_testing()
     for root, dirs, files in os.walk(os.path.abspath(dir)):
         # Load up compiler flags for the directory
@@ -252,7 +263,7 @@ def recursive_retest(dir, fulltest):
         for file in files:
             if os.path.splitext(file)[1] in ['.c', '.cc'] and file[0] != '.':
                 os.chdir(os.path.abspath(root))
-                process_test_file(file, fulltest)
+                process_test_file(file, options)
     # Results!
     print_results()
 
@@ -312,14 +323,14 @@ def main(argv):
                     saved_dir = os.getcwd()
                     os.chdir(os.path.split(arg)[0])
                 init_testing()
-                process_test_file(os.path.split(arg)[1], options.full)
+                process_test_file(os.path.split(arg)[1], options)
                 print_results()
                 if os.path.split(arg)[0] != '':
                     os.chdir(saved_dir)
             else:
-                recursive_retest(arg, options.full)
+                recursive_retest(arg, options)
     else:
-        recursive_retest(os.getcwd(), options.full)
+        recursive_retest(os.getcwd(), options)
     try:
         itertools.dropwhile(lambda x: x[1], performed_tests).next()
         return -1
