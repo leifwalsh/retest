@@ -195,7 +195,7 @@ def process_test_file(file, fulltest):
         call(['rm', '-f', source_file])
         call(['rm', '-f', exec_file])
         # Generate XML out of the file
-        gccxmlargs = ['gccxml', '-fxml=%s' % xml_file]
+        gccxmlargs = ['gccxml', '-lc', '-fxml=%s' % xml_file]
         if CXXFLAGS:
             gccxmlargs.append('--gccxml-cxxflags')
             gccxmlargs.extend(CXXFLAGS.rsplit(' '))
