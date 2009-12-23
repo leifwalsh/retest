@@ -146,11 +146,12 @@ def run_tests(exec_file, conf, fulltest=False):
         visited_tests.append(test)
         if fulltest or conf['tests'][test]['known_state'] != True:
             proc = Popen(['./%s' % exec_file, test[len(test_function_prefix):]],
-                         stderr=PIPE)
-            _, err = proc.communicate()
+                         stdout=PIPE, stderr=PIPE)
+            out, err = proc.communicate()
             ret = proc.wait()
             print_test_status(test, ret == 0 and 'ok' or 'fail', linelength)
             if ret != 0:
+                sys.stdout.write(out)
                 sys.stderr.write(err)
                 print ''
             performed_tests.append((test, (ret == 0)))
