@@ -127,14 +127,15 @@ def compare_configs(new_conf, conf_file):
     old_conf['test_list'] = new_conf['test_list']
     return old_conf
 
-def print_test_status(test, res, linelength):
+def print_test_status(test, res, options, linelength):
     global performed_tests_count
     spaces = ''
     nspaces = linelength - len(test)
     while nspaces:
         spaces += ' '
         nspaces -= 1
-    print '%s%s : %s' % (spaces, test, res)
+    if options.show_skips or res != 'skip':
+        print '%s%s : %s' % (spaces, test, res)
     if res != 'skip':
         performed_tests_count += 1
 
@@ -155,7 +156,7 @@ def run_tests(exec_file, conf, options):
                          stdout=PIPE, stderr=PIPE)
             out, err = proc.communicate()
             ret = proc.wait()
-            print_test_status(test, ret == 0 and 'ok' or 'fail', linelength)
+            print_test_status(test, ret == 0 and 'ok' or 'fail', options, linelength)
             if ret != 0:
                 sys.stdout.write(out)
                 sys.stderr.write(err)
@@ -163,7 +164,7 @@ def run_tests(exec_file, conf, options):
             performed_tests.append((test, (ret == 0)))
             conf['tests'][test]['known_state'] = (ret == 0)
         else:
-            print_test_status(test, 'skip', linelength)
+            print_test_status(test, 'skip', options, linelength)
     try:
         itertools.dropwhile(lambda p: p[1], performed_tests).next()
         print 'Test failure.  Saving "%s" for inspection.' % source_name(exec_file)
@@ -295,8 +296,8 @@ def main(argv):
             make_option('-F', '--full', action='store_true', dest='full',
                         default=False,
                         help='run all tests, regardless of previous successes'),
-            make_option('--no-full', action='store_false', dest='full',
-                        help='opposite of --full (default)')
+            make_option('-S', '--show-skips', action='store_true', dest='show_skips',
+                        default=False, help='show skipped tests')
             ])
     options, args = parser.parse_args()
     if len(args) > 0:
