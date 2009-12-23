@@ -291,7 +291,7 @@ def init_retest():
 
 def main(argv):
     parser = OptionParser(
-        usage='Usage: %prog [init | clean | [files|dirs]... ]',
+        usage='Usage: %prog [OPTIONS] [init | clean | [files|dirs]... ]',
         option_list=[
             make_option('-F', '--full', action='store_true', dest='full',
                         default=False,
