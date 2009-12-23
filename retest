@@ -120,11 +120,7 @@ def compare_configs(new_conf, conf_file):
 
 def print_test_status(test, res, options, linelength):
     global performed_tests_count
-    spaces = ''
-    nspaces = linelength - len(test)
-    while nspaces:
-        spaces += ' '
-        nspaces -= 1
+    spaces = reduce(lambda s, _: s + ' ', range(linelength - len(test)), '')
     if options.show_skips or res != 'skip':
         print '%s%s : %s' % (spaces, test, res)
     if res != 'skip':
@@ -142,7 +138,7 @@ def run_tests(exec_file, conf, options):
     linelength = max(len(test) for test in conf['test_list']) + 2
     for test in conf['test_list']:
         visited_tests.append(test)
-        if options.full or conf['tests'][test]['known_state'] != True:
+        if options.full or not conf['tests'][test]['known_state']:
             proc = Popen(['./%s' % exec_file, test[len(test_function_prefix):]],
                          stdout=PIPE, stderr=PIPE)
             out, err = proc.communicate()
@@ -243,7 +239,7 @@ def init_testing():
     # Make the main project first
     if MAKE_CMD:
         ret = call([SHELL, "-c", MAKE_CMD])
-        if not (ret == 0):
+        if ret != 0:
             sys.exit(-1)
 
 def recursive_retest(dir, options):
@@ -252,33 +248,34 @@ def recursive_retest(dir, options):
         # Load up compiler flags for the directory
         load_compiler_flags()
         # Go through the files
-        for file in files:
-            if os.path.splitext(file)[1] in ['.c', '.cc'] and file[0] != '.':
+        for filename in files:
+            if os.path.splitext(filename)[1] in ['.c', '.cc'] and filename[0] != '.':
                 os.chdir(os.path.abspath(root))
-                process_test_file(file, options)
+                process_test_file(filename, options)
     # Results!
     print_results()
 
 def recursive_clean():
     for root, dirs, files in os.walk(os.path.abspath(os.getcwd())):
-        for file in files:
-            if os.path.splitext(file)[1] in ['.c', '.cc'] and file[0] != '.':
+        for filename in files:
+            if os.path.splitext(filename)[1] in ['.c', '.cc'] and filename[0] != '.':
                 os.chdir(os.path.abspath(root))
-                call(['rm', '-f', '%s.xml' % file])
-                call(['rm', '-f', source_name(file)])
-                call(['rm', '-f', exec_name(file)])
-                call(['rm', '-f', conf_name(file)])
+                call(['rm', '-f', '%s.xml' % filename])
+                call(['rm', '-f', source_name(filename)])
+                call(['rm', '-f', exec_name(filename)])
+                call(['rm', '-f', conf_name(filename)])
 
 def init_retest():
     with open(retest_conf_file, 'w') as conf:
-        conf.write("# Shell to use for running the compiler\n")
-        conf.write('SHELL = "/bin/bash"\n')
-        conf.write("# A shell command to make the main project\n")
-        conf.write('MAKE_CMD = ""\n')
-        conf.write("# Arguments to pass to the compiler\n")
-        conf.write('CXXFLAGS = ""\n')
-        conf.write("# Arguments to pass to the linker\n")
-        conf.write('LDFLAGS = ""\n')
+        conf.write('''# Shell to use for running the compiler
+SHELL = "/bin/bash"
+# A shell command to make the main project
+MAKE_CMD = ""
+# Arguments to pass to the compiler
+CXXFLAGS = ""
+# Arguments to pass to the linker
+LDFLAGS = ""
+''')
 
 def main(argv):
     parser = OptionParser(
@@ -291,22 +288,22 @@ def main(argv):
                         default=False, help='show skipped tests')
             ])
     options, args = parser.parse_args()
-    if len(args) > 0:
-        if 'clean' in args:
-            if len(args) > 1:
-                parser.error('clean should be specified alone')
-            recursive_clean()
-            return 0
-        if 'init' in args:
-            if len(args) > 1:
-                parser.error('init should be specified alone')
-            init_retest()
-            return 0
+    if 'clean' in args:
+        if len(args) > 1:
+            parser.error('clean should be specified alone')
+        recursive_clean()
+    elif 'init' in args:
+        if len(args) > 1:
+            parser.error('init should be specified alone')
+        init_retest()
+    elif len(args) > 0:
+        # check all arguments
         for arg in args:
             if not os.path.exists(arg):
                 parser.error('%s not found' % arg)
             if not (os.path.isdir(arg) or os.path.isfile(arg)):
                 parser.error('%s is not a file or directory' % arg)
+        # run tests
         for arg in args:
             if os.path.isfile(arg):
                 if not os.path.splitext(arg)[1] in ['.c', '.cc']:
