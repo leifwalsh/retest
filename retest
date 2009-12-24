@@ -18,6 +18,7 @@ visited_tests = []
 performed_tests = []
 performed_tests_count = 0
 retest_conf_file = '.retest'
+gccxmlprogname = 'gccxml'
 
 cxx_flags_loaded = False
 
@@ -200,13 +201,19 @@ def process_test_file(file, options):
         if os.path.exists(exec_file):
             os.unlink(exec_file)
         # Generate XML out of the file
-        gccxmlargs = ['gccxml', '-fxml=%s' % xml_file]
+        whichproc = Popen(['which', gccxmlprogname], stdout=PIPE)
+        gccxmlprog, _ = whichproc.communicate()
+        ret = whichproc.wait()
+        if ret != 0:
+            print >>sys.stderr, "Couldn't find %s.  Please install it." % gccxmlprogname
+            sys.exit(-1)
+        gccxmlargs = [gccxmlprog.strip(), '-fxml=%s' % xml_file]
         if CXXFLAGS:
             gccxmlargs.append('--gccxml-cxxflags')
             gccxmlargs.extend(CXXFLAGS.rsplit(' '))
         gccxmlargs.append(file)
         ret = call(gccxmlargs)
-        if not (ret == 0):
+        if ret != 0:
             sys.exit(-1)
         # Load the XML
         dom = parse(xml_file)
