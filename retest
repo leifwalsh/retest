@@ -5,6 +5,7 @@ import sys
 import os
 import os.path
 from optparse import OptionParser, make_option
+from shutil import copy
 from subprocess import call, Popen, PIPE
 from xml.dom.minidom import parse
 import hashlib
@@ -84,7 +85,7 @@ def gen_main_file(test_file, dom):
         config['test_list'].append(fn)
         del config['tests'][fn]['line']
     # Generate the source file
-    call(['cp', test_file, source_name(test_file)])
+    copy(test_file, source_name(test_file))
     with open(source_name(test_file), 'a') as gen:
         gen.write('\n/*** GENERATED CODE ***/\n\n')
         gen.write('#include <string.h>\n\n')
@@ -156,7 +157,8 @@ def run_tests(exec_file, conf, options):
         itertools.dropwhile(lambda p: p[1], performed_tests).next()
         print 'Test failure.  Saving "%s" for inspection.' % source_name(exec_file)
     except StopIteration:
-        call(['rm', '-f', source_name(exec_file)])
+        if os.path.exists(source_name(exec_file)):
+            os.unlink(source_name(exec_file))
     return conf
 
 def load_compiler_flags():
@@ -191,9 +193,12 @@ def process_test_file(file, options):
             os.path.getmtime(exec_file) >= os.path.getmtime(file) and
             os.path.getmtime(conf_file) >= os.path.getmtime(file))):
         # Remove generated files
-        call(['rm', '-f', xml_file])
-        call(['rm', '-f', source_file])
-        call(['rm', '-f', exec_file])
+        if os.path.exists(xml_file):
+            os.unlink(xml_file)
+        if os.path.exists(source_file):
+            os.unlink(source_file)
+        if os.path.exists(exec_file):
+            os.unlink(exec_file)
         # Generate XML out of the file
         gccxmlargs = ['gccxml', '-fxml=%s' % xml_file]
         if CXXFLAGS:
@@ -205,7 +210,8 @@ def process_test_file(file, options):
             sys.exit(-1)
         # Load the XML
         dom = parse(xml_file)
-        call(['rm', '-f', xml_file])
+        if os.path.exists(xml_file):
+            os.unlink(xml_file)
         # Generate executable
         conf = gen_main_file(file, dom)
         # Compile
@@ -227,7 +233,8 @@ def process_test_file(file, options):
     else:
         conf = load_config(conf_file)
     # Remove old config file
-    call(['rm', '-f', conf_file])
+    if os.path.exists(conf_file):
+        os.unlink(conf_file)
     # Run the test
     conf = run_tests(exec_file, conf, options)
     # Generate new configuration file
@@ -260,10 +267,14 @@ def recursive_clean():
         for filename in files:
             if os.path.splitext(filename)[1] in ['.c', '.cc'] and filename[0] != '.':
                 os.chdir(os.path.abspath(root))
-                call(['rm', '-f', '%s.xml' % filename])
-                call(['rm', '-f', source_name(filename)])
-                call(['rm', '-f', exec_name(filename)])
-                call(['rm', '-f', conf_name(filename)])
+                if os.path.exists('%s.xml' % filename):
+                    os.unlink('%s.xml' % filename)
+                if os.path.exists(source_name(filename)):
+                    os.unlink(source_name(filename))
+                if os.path.exists(exec_name(filename)):
+                    os.unlink(exec_name(filename))
+                if os.path.exists(conf_name(filename)):
+                    os.unlink(conf_name(filename))
 
 def init_retest():
     with open(retest_conf_file, 'w') as conf:
