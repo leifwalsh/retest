@@ -10,6 +10,7 @@ from subprocess import call, Popen, PIPE
 from xml.dom.minidom import parse
 import hashlib
 import itertools
+import linecache
 
 test_function_prefix = 'test_'
 
@@ -61,12 +62,11 @@ def gen_fn_hash(source, node):
     else:
         end = begin
     m = hashlib.md5()
-    with open(source, 'r') as src:
-        for i, line in enumerate(src):
-            if i+1 > end:
-                break
-            if i+1 >= begin and i+1 <= end:
-                m.update(line)
+    for i in range(begin, end+1):
+        line = linecache.getline(source, i)
+        if line == '':
+            raise IOError('failed to get line %d from file %s' % (i, source))
+        m.update(line)
     return m.hexdigest()
 
 # Inspect the test file source code and automatically generate a file
